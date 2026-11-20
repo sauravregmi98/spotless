@@ -1,26 +1,29 @@
-name: Build iOS (unsigned)
+name: Build Spotless iOS IPA
+
 on: workflow_dispatch
 
 jobs:
-  build:
+  build-ipa:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install tools
         run: |
-          brew install xcodegen
+          brew install xcodegen mpv
           rustup update stable
           rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 
-      - name: Build shared Rust core
-        run: scripts/build-ios-core.sh --release
+      - name: Build Rust iOS core and generate Xcode project
+        run: |
+          export LIBRARY_PATH="$(brew --prefix)/lib:$LIBRARY_PATH"
+          export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix)/lib"
+          export PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig"
+          scripts/build-ios-core.sh --release
+          cd ios/Encore
+          xcodegen generate
 
-      - name: Generate Xcode project
-        working-directory: ios/Encore
-        run: xcodegen generate
-
-      - name: Build app without signing
+      - name: Build unsigned iOS app
         working-directory: ios/Encore
         run: |
           xcodebuild -project Encore.xcodeproj -scheme Encore \
@@ -33,7 +36,9 @@ jobs:
         working-directory: ios/Encore
         run: |
           APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
-          mkdir Payload && cp -R "$APP" Payload/
+          echo "Found app: $APP"
+          mkdir Payload
+          cp -R "$APP" Payload/
           zip -qr Spotless.ipa Payload
 
       - uses: actions/upload-artifact@v4
