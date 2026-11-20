@@ -1,0 +1,42 @@
+name: Build iOS (unsigned)
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          brew install xcodegen
+          rustup update stable
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+
+      - name: Build shared Rust core
+        run: scripts/build-ios-core.sh --release
+
+      - name: Generate Xcode project
+        working-directory: ios/Encore
+        run: xcodegen generate
+
+      - name: Build app without signing
+        working-directory: ios/Encore
+        run: |
+          xcodebuild -project Encore.xcodeproj -scheme Encore \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package .ipa
+        working-directory: ios/Encore
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          mkdir Payload && cp -R "$APP" Payload/
+          zip -qr Spotless.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spotless-ipa
+          path: ios/Encore/Spotless.ipa
